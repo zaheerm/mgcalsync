@@ -2,7 +2,7 @@ Source: mgcalsync
 Section: user/network
 Priority: extra
 Maintainer: Zaheer Abbas Merali <zaheermerali@gmail.com>
-Build-Depends-Indep: debhelper (>= 4), libsoup2.26-1-dev (>= 2.26.3-3maemo1), libgdata (>= 0.5.1), libglib2.0-dev, libsqlite3-dev, calendar-backend-dev
+Build-Depends-Indep: debhelper (>= 4), libsoup2.26-dev (>= 2.26.3-3maemo1), libgdata (>= 0.5.1), libglib2.0-dev, libsqlite3-dev, calendar-backend-dev
 Standards-Version: 4
 
 Package: mgcalsync

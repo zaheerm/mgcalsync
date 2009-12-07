@@ -146,7 +146,9 @@ add_calendar(gpointer data, gpointer user_data)
   CMulticalendar *mc = CMulticalendar::MCInstance();
 
   GDataEntry *entry = GDATA_ENTRY (calendar);
-  if (calid = g_hash_table_lookup (info->cal_mappings, gdata_entry_get_id (entry))) {
+  const gchar* gcalid = gdata_entry_get_id (entry);
+
+  if (calid = g_hash_table_lookup (info->cal_mappings, gcalid)) {
     g_print("Calendar already been mapped\n");
     retval = mc->getCalendarById(atoi((gchar*)calid), error);
   }
@@ -361,7 +363,7 @@ sync_calendars_for_account(gpointer key, gpointer value, gpointer user_data)
   g_print("logged into gcal with account %s\n", username);
   callistfeed = get_list_of_calendars(service, &error);
   entries = gdata_feed_get_entries (callistfeed);
-  g_list_foreach (entries, add_calendar, &info);
+  g_list_foreach (entries, add_calendar, info);
   if (!entries) goto cleanup;
 
 cleanup:

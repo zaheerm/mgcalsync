@@ -7,6 +7,7 @@
 #include <CMulticalendar.h>
 #include <CCalendar.h>
 #include <CEvent.h>
+#include <CalendarErrors.h>
 
 #include <iostream>
 #include <string>
@@ -41,7 +42,7 @@ void add_account(struct shared_info *info, const gchar* username, const gchar* p
 void add_calendar_forsync(struct shared_info *info, const gchar* calid, int forsync);
 void sync_calendars(struct shared_info *info, int argc, char** argv);
 void sync_calendars_for_account(gpointer key, gpointer value, gpointer user_data);
-static void check_event_difference(GDataCalendarEvent *gcevent, CEvent *mcevent);
+static gboolean check_event_difference(GDataCalendarEvent *gcevent, CEvent *mcevent);
 
 
 static GDataCalendarService*
@@ -82,17 +83,47 @@ output_calendar(gpointer data, gpointer user_data)
     gdata_entry_get_summary (entry), gdata_entry_get_id (entry));
 } 
 
-static void
+static gboolean
 check_event_difference(GDataCalendarEvent *gcevent, CEvent *mcevent)
 {
   string mctitle;
   const gchar* gctitle;
-
+  const gchar* gcdescription;
+  string mcdescription;
+  gboolean changed = FALSE;
+  GTimeVal gcstart, gcend;
+  time_t mcstart, mcend;
+  GDataGDWhen *t;
   gctitle = gdata_entry_get_title (GDATA_ENTRY(gcevent));
   mctitle = mcevent->getSummary();
   if (strcmp (gctitle, mctitle.c_str()) != 0) {
     g_print("event mapped in gcal has different title: gcal: %s mcal: %s\n", gctitle, mctitle.c_str());
+    mcevent->setSummary(gctitle);
+    changed = TRUE;
   }
+  gcdescription = gdata_entry_get_content (GDATA_ENTRY(gcevent));
+  if (!gcdescription) gcdescription = "";
+  mcdescription = mcevent->getDescription();
+  if (strcmp (gcdescription, mcdescription.c_str()) != 0) {
+    g_print("event mapped in gcal has different description: gcal: %s mcal: %s\n", gcdescription, mcdescription.c_str());
+    mcevent->setDescription(gcdescription);
+    changed = TRUE;
+  }
+  gdata_calendar_event_get_primary_time (gcevent, &gcstart, &gcend, &t);
+  mcstart = mcevent->getDateStart();
+  mcend = mcevent->getDateEnd();
+  if (mcstart != gcstart.tv_sec) {
+    g_print("event mapped in gcal has different start %ld to mcal %ld\n", gcstart.tv_sec, mcstart);
+    mcevent->setDateStart((time_t)gcstart.tv_sec);
+    changed = TRUE;
+  }  
+  if (mcend != gcend.tv_sec) {
+    g_print("event mapped in gcal has different end %ld to mcal %ld\n", gcend.tv_sec, mcend);
+    mcevent->setDateEnd((time_t)gcend.tv_sec);
+    changed = TRUE;
+  }  
+
+  return changed;
 }
 
 static void
@@ -137,7 +168,12 @@ add_event(gpointer data, gpointer user_data)
       g_print("Event %s could not be found but is mapped as %s\n", gdata_entry_get_id (GDATA_ENTRY(gcevent)), eventid);
     }
     else {
-      check_event_difference (gcevent, event);
+      if (check_event_difference (gcevent, event)) {
+        info->mcal->modifyEvent(event, error);
+        if (error != CALENDAR_OPERATION_SUCCESSFUL) {
+          g_print("Error modifying event\n");
+        }
+      }
     }
   }
   else {
@@ -174,10 +210,15 @@ add_calendar(gpointer data, gpointer user_data)
   const gchar* gcalid = gdata_entry_get_id (entry);
 
   if (calid = g_hash_table_lookup (info->cal_mappings, gcalid)) {
-    g_print("Calendar already been mapped\n");
+    /*g_print("Calendar already been mapped\n");*/
     retval = mc->getCalendarById(atoi((gchar*)calid), error);
+    if (error != CALENDAR_OPERATION_SUCCESSFUL) {
+      g_print("Error getting calendar gcal: %s in mcal: %s\n", gcalid, calid);
+      return;
+    }
   }
   else {
+    /* FIXME: check whether this calendar has been marked for not to be synced before blindly just adding it */
     retval = new CCalendar(gdata_entry_get_title (entry), COLOUR_NEXT_FREE, FALSE, TRUE, SYNC_CALENDAR, "SomeTune.xyz",
       "Version-1.0");
     mc->addCalendar(retval, error);
@@ -319,7 +360,7 @@ void get_data(struct shared_info* info)
 
   for(i=0;i<rows;i++) {
     g_hash_table_insert (info->cal_mappings, g_strdup(tables[cols + i*cols]), g_strdup(tables[cols + i*cols + 1]));
-    g_print("Calendar mapping of %s to %s\n", tables[cols + i*cols], tables[cols + i*cols + 1]);
+    /*g_print("Calendar mapping of %s to %s\n", tables[cols + i*cols], tables[cols + i*cols + 1]);*/
   }
 
   sqlite3_free_table(tables);
@@ -329,7 +370,7 @@ void get_data(struct shared_info* info)
 
   for(i=0;i<rows;i++) {
     g_hash_table_insert (info->event_mappings, g_strdup(tables[cols + i*cols]), g_strdup(tables[cols + i*cols + 1]));
-    g_print("Event mapping of %s to %s\n", tables[cols + i*cols], tables[cols + i*cols + 1]);
+    /*g_print("Event mapping of %s to %s\n", tables[cols + i*cols], tables[cols + i*cols + 1]);*/
 
   }
   sqlite3_free_table(tables);

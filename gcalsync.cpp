@@ -222,7 +222,7 @@ void add_account(struct shared_info *info, const gchar* username, const gchar* p
   ret = sqlite3_step (statement);
   if (ret == SQLITE_DONE) {
     sqlite3_finalize (statement);
-    g_hash_table_insert (info->accounts, (gpointer)username, (gpointer)password);
+    g_hash_table_insert (info->accounts, g_strdup(username), g_strdup(password));
   }
   else {
     g_print("Error: %d\n", ret);
@@ -316,7 +316,7 @@ void get_data(struct shared_info* info)
   if (errmsg) goto error;
 
   for(i=0;i<rows;i++) {
-    g_hash_table_insert (info->forsync, tables[cols + i*cols], (gpointer)atoi(tables[cols + i*cols + 1]));
+    g_hash_table_insert (info->forsync, g_strdup(tables[cols + i*cols]), (gpointer)atoi(tables[cols + i*cols + 1]));
   }
   sqlite3_free_table (tables);
 
@@ -324,7 +324,7 @@ void get_data(struct shared_info* info)
   if (errmsg) goto error;
 
   for(i=0;i<rows;i++) {
-    g_hash_table_insert (info->accounts, tables[cols + i*cols], tables[cols + i*cols + 1]);
+    g_hash_table_insert (info->accounts, g_strdup(tables[cols + i*cols]), g_strdup(tables[cols + i*cols + 1]));
   }
   sqlite3_free_table (tables);
   return;
@@ -350,6 +350,8 @@ sync_calendars_for_account(gpointer key, gpointer value, gpointer user_data)
 
   callistfeed = NULL;
   eventlistfeed = NULL;
+
+  g_print("logging into gcal with account %s:%s\n", username, password);
 
   service = login_to_gcal (username, password, &error);
   info->googleac = username;

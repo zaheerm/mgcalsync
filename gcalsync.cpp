@@ -41,6 +41,7 @@ void add_account(struct shared_info *info, const gchar* username, const gchar* p
 void add_calendar_forsync(struct shared_info *info, const gchar* calid, int forsync);
 void sync_calendars(struct shared_info *info, int argc, char** argv);
 void sync_calendars_for_account(gpointer key, gpointer value, gpointer user_data);
+static void check_event_difference(GDataCalendarEvent *gcevent, CEvent *mcevent);
 
 
 static GDataCalendarService*
@@ -82,6 +83,19 @@ output_calendar(gpointer data, gpointer user_data)
 } 
 
 static void
+check_event_difference(GDataCalendarEvent *gcevent, CEvent *mcevent)
+{
+  string mctitle;
+  const gchar* gctitle;
+
+  gctitle = gdata_entry_get_title (GDATA_ENTRY(gcevent));
+  mctitle = mcevent->getSummary();
+  if (strcmp (gctitle, mctitle.c_str()) != 0) {
+    g_print("event mapped in gcal has different title: gcal: %s mcal: %s\n", gctitle, mctitle.c_str());
+  }
+}
+
+static void
 add_event(gpointer data, gpointer user_data)
 {
   GDataCalendarEvent *gcevent = GDATA_CALENDAR_EVENT (data);
@@ -118,16 +132,27 @@ add_event(gpointer data, gpointer user_data)
   start_time = start.tv_sec;
   end_time = end.tv_sec;
   if (eventid = g_hash_table_lookup (info->event_mappings, gdata_entry_get_id (GDATA_ENTRY(gcevent)))) {
-    g_print("Event already been mapped\n");
     event = info->mcal->getEvent((const char*)eventid, error);
+    if (!event) {
+      g_print("Event %s could not be found but is mapped as %s\n", gdata_entry_get_id (GDATA_ENTRY(gcevent)), eventid);
+    }
+    else {
+      check_event_difference (gcevent, event);
+    }
   }
-  else {    
+  else {
+    bool addeventret = false;    
     g_print("%s: %s...%s..%s\n", gdata_calendar_event_get_uid(gcevent), gdata_entry_get_title (GDATA_ENTRY(gcevent)), gdata_entry_get_content (GDATA_ENTRY (gcevent)));
     /* FIXME: need to do recurring events and places correctly */
     g_print("Adding new event\n");
     event = new CEvent(gdata_entry_get_title (GDATA_ENTRY (gcevent)), gdata_entry_get_content (GDATA_ENTRY (gcevent)) ? gdata_entry_get_content (GDATA_ENTRY (gcevent)) : "", "", start_time, end_time);
-    info->mcal->addEvent(event, error);
-    add_event_mapping(info->db, gdata_entry_get_id (GDATA_ENTRY (gcevent)), event->getId());
+    addeventret = info->mcal->addEvent(event, error);
+    if (addeventret && strcmp(event->getId().c_str(), "") != 0) {
+      add_event_mapping(info->db, gdata_entry_get_id (GDATA_ENTRY (gcevent)), event->getId());
+    }
+    else {
+      g_print("Error adding event: %s with title: %s. Error code: %d\n", gdata_calendar_event_get_uid(gcevent), gdata_entry_get_title (GDATA_ENTRY(gcevent)), error);
+    }
   }
 }
 
@@ -289,11 +314,6 @@ void get_data(struct shared_info* info)
   char *errmsg;
   int i;
 
-  info->cal_mappings = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  info->event_mappings = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  info->accounts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  info->forsync = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
-
   sqlite3_get_table (info->db, "SELECT * from calendar_mapping", &tables, &rows, &cols, &errmsg);
   if (errmsg) goto error;
 
@@ -403,6 +423,11 @@ int main(int argc, char** argv)
 
   g_thread_init(NULL);
   g_type_init();
+
+  info.cal_mappings = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  info.event_mappings = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  info.accounts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  info.forsync = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
 
   info.db = connect_to_database("/home/user/MyDocs/mgcalsync.db");
   initialise_database(info.db);
